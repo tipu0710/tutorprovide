@@ -2,10 +2,8 @@ import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
-import 'package:flutter_webview_plugin/flutter_webview_plugin.dart';
-import 'package:page_transition/page_transition.dart';
-import 'dart:developer' as dev;
-import 'home_page.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+import 'dart:developer';
 
 class WebWidget extends StatefulWidget {
   final String url;
@@ -20,11 +18,11 @@ class WebWidget extends StatefulWidget {
 }
 
 class _WebWidget extends State<WebWidget> {
-  final flutterWebviewPlugin = FlutterWebviewPlugin();
   late StreamSubscription<ConnectivityResult> _connectivitySubscription;
-  late StreamSubscription<WebViewStateChanged> _onStateChanged;
+  bool isLoading = true;
   bool isLoadFirstTime = true;
   bool isInternet = true;
+  WebViewController? webViewController;
 
   @override
   void initState() {
@@ -34,74 +32,67 @@ class _WebWidget extends State<WebWidget> {
         .listen((ConnectivityResult result) {
       checkInternetStatus(result);
     });
-    flutterWebviewPlugin.onDestroy.listen((_) {
-      Navigator.push(
-        context,
-        PageTransition(
-          child: const HomePage(),
-          type: PageTransitionType.scale,
-          alignment: Alignment.center,
-          duration: const Duration(seconds: 1),
-        ),
-      );
-    });
-    flutterWebviewPlugin.onHttpError.listen((error) {
-      dev.log(error.code);
-      Navigator.pop(context);
-    });
-
-    _onStateChanged =
-        flutterWebviewPlugin.onStateChanged.listen((WebViewStateChanged state) {
-      dev.log(state.type.toString());
-      // if (mounted && isLoadFirstTime) {
-      //   if (state.type == WebViewState.finishLoad) {
-      //     flutterWebviewPlugin.reloadUrl(widget.url);
-      //     setState(() {
-      //       isLoadFirstTime = false;
-      //     });
-      //   }
-      // }
-    });
   }
 
   @override
   void dispose() {
-    _onStateChanged.cancel();
     _connectivitySubscription.cancel();
-    flutterWebviewPlugin.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return isInternet
-        ? WebviewScaffold(
-            url: widget.url,
-            withJavascript: true,
-            withZoom: false,
-            useWideViewPort: true,
-            clearCache: false,
-            clearCookies: false,
-            appCacheEnabled: true,
-            withLocalStorage: true,
-            allowFileURLs: true,
-            hidden: true,
-            scrollBar: false,
-            initialChild: Container(
-              color: Colors.white,
-              child: Center(
-                child: Center(
-                  child: SpinKitRipple(
-                    size: 150,
-                    itemBuilder: (_, int index) {
-                      return const DecoratedBox(
-                        decoration: BoxDecoration(
-                          shape: BoxShape.rectangle,
-                          color: Colors.green,
+        ? WillPopScope(
+            onWillPop: () async {
+              if (webViewController != null &&
+                  await webViewController!.canGoBack()) {
+                await webViewController!.goBack();
+                return false;
+              } else {
+                Navigator.pop(context);
+                return true;
+              }
+            },
+            child: SafeArea(
+              bottom: false,
+              child: Scaffold(
+                body: Stack(
+                  children: [
+                    WebView(
+                      initialUrl: widget.url,
+                      javascriptMode: JavascriptMode.unrestricted,
+                      onWebViewCreated: (controller) {
+                        webViewController = controller;
+                      },
+                      onProgress: (pro) {
+                        if (isLoading && pro == 100) {
+                          setState(() {
+                            isLoading = false;
+                          });
+                        }
+                      },
+                    ),
+                    if (isLoading)
+                      Center(
+                        child: Container(
+                          height: MediaQuery.of(context).size.height,
+                          width: MediaQuery.of(context).size.width,
+                          color: Colors.white,
+                          child: SpinKitRipple(
+                            size: 150,
+                            itemBuilder: (_, int index) {
+                              return const DecoratedBox(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.rectangle,
+                                  color: Colors.green,
+                                ),
+                              );
+                            },
+                          ),
                         ),
-                      );
-                    },
-                  ),
+                      ),
+                  ],
                 ),
               ),
             ),
